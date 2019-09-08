@@ -1,4 +1,3 @@
 sociality-IQ
 
-test
-there
+0
