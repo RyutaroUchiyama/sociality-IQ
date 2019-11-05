@@ -381,83 +381,83 @@ R2.list$ marginal.R2gain <- rep(NA, dim(R2.list)[1])
 R2.list$conditional.R2gain <- rep(NA, dim(R2.list)[1])
 ##R2.list$marginal.R2gain <- R2.list$marginal.R2
 
-R2.list$conditional.R2[1] - R2.list$conditional.R2[61]
-R2.list$conditional.R2[1] / R2.list$conditional.R2[61]
-R2.list$conditional.R2[5] - R2.list$conditional.R2[65]
-R2.list$conditional.R2[5] / R2.list$conditional.R2[65]
-
-
-
-
-baseline <- t(sapply(paste0("model.", 61:65), function(x)r.squaredGLMM(get(x))))
-rbind(rep(baseline,12), nrow=nrow(baseline), bycol=T)
-
-
-matrix( rep( t( baseline ) , 10 ) , ncol = ncol(m) , byrow = TRUE )
-
-rsquared.list$test <- 
-# subchapter higher r2 than domain. Core list higher than expanded list. uzDG generally higher than uzDS, but uzDS often higher|Domain
-
-
-
-#******
-colnames(dat.long)
-table(dat.cultural_withpsychiatric$country_name)
-table(dat.cultural$trait_chapter)
-
-
-table(dat.cultural_psychiatric$country_name)
-
-hist(unique(dat.cultural$var_uzDG), breaks=20)
-
-
-table(dat.long$trait_domain)
-
-
-
-
-
-dat.long.1 <- dat.long[culturaltraits_nonpsychiatric,]
-dat.long.2 <-dat.long[culturaltraits_withpsychiatric,]
-
-tabulate(dat.long.1$e_regionpol)
-tabulate(dat.long.2$e_regionpol)
-
-levels(as.factor(dat.long.2$country_name))
-tabulate(as.factor(dat.long.2$country_name))
-
-
-
-  length(culturaltraits_withpsychiatric)
-  
-  x <- dat.long[culturaltraits_nonpsychiatric,]
-  length(unique(x$country_name))
-  
-    
-    
-)
-
-
-
-trait_hierarchy2 <- unique( dat.long[,14:12] )
-trait_hierarchy2 <- trait_hierarchy2[order(trait_hierarchy2$trait_subchapter) , ]
-trait_hierarchy2 <- trait_hierarchy2[order(trait_hierarchy2$trait_chapter) , ]
-trait_hierarchy2 <- trait_hierarchy2[order(trait_hierarchy2$trait_domain) , ]
-write.csv(trait_hierarchy2, "actual_traits_foranalysis.csv")
-
-trait_hierarchy3 <- unique( dat.long[,12:11] )
-trait_hierarchy3 <- trait_hierarchy3[order(trait_hierarchy3$trait_subchapter) , ]
-write.csv(trait_hierarchy3, "subchapter_and_trait.csv")
-
-
-
-
-lmm <- lmer(heritability ~ var_uzDG+ e_migdppc+ e_peaveduc+ e_wb_pop+ trait+ (1+ trait+ var_uzDG| e_regionpol))
-
-
-
-lmm <- lmer(heritability ~ var_uzDG+ e_migdppc+ e_peaveduc+ e_wb_pop+ trait+ )
-
-
-
+# R2.list$conditional.R2[1] - R2.list$conditional.R2[61]
+# R2.list$conditional.R2[1] / R2.list$conditional.R2[61]
+# R2.list$conditional.R2[5] - R2.list$conditional.R2[65]
+# R2.list$conditional.R2[5] / R2.list$conditional.R2[65]
+# 
+# 
+# 
+# 
+# baseline <- t(sapply(paste0("model.", 61:65), function(x)r.squaredGLMM(get(x))))
+# rbind(rep(baseline,12), nrow=nrow(baseline), bycol=T)
+# 
+# 
+# matrix( rep( t( baseline ) , 10 ) , ncol = ncol(m) , byrow = TRUE )
+# 
+# rsquared.list$test <- 
+# # subchapter higher r2 than domain. Core list higher than expanded list. uzDG generally higher than uzDS, but uzDS often higher|Domain
+# 
+# 
+# 
+# #******
+# colnames(dat.long)
+# table(dat.cultural_withpsychiatric$country_name)
+# table(dat.cultural$trait_chapter)
+# 
+# 
+# table(dat.cultural_psychiatric$country_name)
+# 
+# hist(unique(dat.cultural$var_uzDG), breaks=20)
+# 
+# 
+# table(dat.long$trait_domain)
+# 
+# 
+# 
+# 
+# 
+# dat.long.1 <- dat.long[culturaltraits_nonpsychiatric,]
+# dat.long.2 <-dat.long[culturaltraits_withpsychiatric,]
+# 
+# tabulate(dat.long.1$e_regionpol)
+# tabulate(dat.long.2$e_regionpol)
+# 
+# levels(as.factor(dat.long.2$country_name))
+# tabulate(as.factor(dat.long.2$country_name))
+# 
+# 
+# 
+#   length(culturaltraits_withpsychiatric)
+#   
+#   x <- dat.long[culturaltraits_nonpsychiatric,]
+#   length(unique(x$country_name))
+#   
+#     
+#     
+# )
+# 
+# 
+# 
+# trait_hierarchy2 <- unique( dat.long[,14:12] )
+# trait_hierarchy2 <- trait_hierarchy2[order(trait_hierarchy2$trait_subchapter) , ]
+# trait_hierarchy2 <- trait_hierarchy2[order(trait_hierarchy2$trait_chapter) , ]
+# trait_hierarchy2 <- trait_hierarchy2[order(trait_hierarchy2$trait_domain) , ]
+# write.csv(trait_hierarchy2, "actual_traits_foranalysis.csv")
+# 
+# trait_hierarchy3 <- unique( dat.long[,12:11] )
+# trait_hierarchy3 <- trait_hierarchy3[order(trait_hierarchy3$trait_subchapter) , ]
+# write.csv(trait_hierarchy3, "subchapter_and_trait.csv")
+# 
+# 
+# 
+# 
+# lmm <- lmer(heritability ~ var_uzDG+ e_migdppc+ e_peaveduc+ e_wb_pop+ trait+ (1+ trait+ var_uzDG| e_regionpol))
+# 
+# 
+# 
+# lmm <- lmer(heritability ~ var_uzDG+ e_migdppc+ e_peaveduc+ e_wb_pop+ trait+ )
+# 
+# 
+# 
 
