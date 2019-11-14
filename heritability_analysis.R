@@ -1,25 +1,30 @@
 
 
-# In UZ, No var_uzDG for China. Can we find WVS data for 
-# If we're reconstructing Uz CTL variable with broader range of WVS surveys, 
-#   should we try to match WVS years with years of paper? (probably futile)
+
+assign("last.warning", NULL, envir = baseenv())
+# reset errors (sigh)
+
 
 
 #----
 library(reshape2)
 library(lme4)
 library(readxl)
-
+library(readstata13) 
+library(dplyr)
 ###library(car)
 library(ggplot2)
-###library(stargazer) 
+library(stargazer) 
 library(stringr)
 library(MuMIn)
-library(lmerTest)#????
+library(lmerTest)
+library(formattable)
 
 original_wd <- getwd()
 # Import WVS data used for Muthukrishna et al. Cultural Distance analysis
-wvs <- read.csv("/Users/ryutaro/Desktop/Muthukrishna_Lab/cultural distance material/wvs_allelesv02_merged.csv")
+### wvs.alleles <- read.csv("/Users/ryutaro/Desktop/Muthukrishna_Lab/cultural distance material/wvs_allelesv02_merged.csv")
+# Import raw (pre-'allelized') WVS data used for Muthukrishna et al. Cultural Distance analysis
+wvs <- read.dta13("/Users/ryutaro/Desktop/Muthukrishna_Lab/cultural distance material/WVS_Longitudinal_1981_2014_stata_v2015_04_18.dta")
 # Import WVS variable characteristics used for Muthukrishna et al. Cultural Distance analysis
 dimensions <- read.csv("/Users/ryutaro/Desktop/Muthukrishna_Lab/cultural distance material/Additional_Supplementary_Materials/allele-dimensions-data.csv")
 # Import Uz (2015) tightness-looseness data 
@@ -72,82 +77,92 @@ for (i in 1:dim(dat.pre)[2]){
   if (sum(!is.na(dat.pre[,i])) == 0){ columns.nodata <- c(columns.nodata, i)}}
 dat.pre <- dat.pre[,-columns.nodata]
 
-#= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = 
-# From here, code adapted from Muthukrishna et al. Cultural Distance script 
-# (from Table1_Calculate_CFst_copy2.R)
+# All variables that appear in "recode_wvs.do" 
+include_vars <-  c("A001","A002","A003","A004","A005","A006","A007","A025","A026","A029","A030","A032","A034","A035","A038","A039","A040","A041","A042","A165","A168","A057","A058","A059","A060","A061","A062","B001","B002","B003","B008","B009","A169",
+"A064","A065","A066","A067","A068","A069","A070","A071","A072","A073","A074","A075","A076","A077","A079","A081","A082","A083","A084","A085","A086","A087","A088","A089","A090","A091","A092","A093","A094","C001","C002","C006","A170","A173",
+"C008","C009","C010","C011","C012","C013","C014","C015","C016","C017","C018","C019","C020","C021","C036","C037","C038","C039","C040","C041","C059","C060","C061","X007","X011","D017","D018","D019","D022","D023","D054","D055","D056","D057","D058","D059","D060",
+"E001","E002","E003","E004","E005","E006","E012","E014","E015","E016","E018","E019","E022","E023","E025","E026","E027","E028","E029","E033","E034","E035","E036","E037","E039","E046","E143","E112","E114","E115","E116","E117","E110",
+"E120","E121","E122","E123","E124","E125","E128","E129","E135","E136","E137","E138","E139","F001","F022","F025","F028","F034","F035","F036","F037","F038","F050","F051","F052","F053","F054","F063","F064","F065","F066","F102","F103",
+"F104","F105","F114","F115","F116","F117","F118","F119","F120","F121","F122","F123","G001","G002","G006","E150","G015","G016","E179","E180","E182")
 
-# extract relevant subsets of data
-include_vars <- as.character(dimensions[dimensions$CAT.All==1,]$V)
-wvs <- wvs[,(names(wvs) %in% include_vars | names(wvs) %in% c("S002", "S003", "X048WVS"))]
-wvs$pop <- wvs$S003
-col_idx <- grep("pop", names(wvs)) #Move pop to the front
-wvs <- wvs[, c(col_idx, (1:ncol(wvs))[-col_idx])]
-wvs.rep_subset <- wvs[str_detect(wvs$S002,"^2005") | str_detect(wvs$S002,"^2010"),]
-wvs.rep_subset[wvs.rep_subset<0] <- NA
+wvs <- wvs[,(names(wvs) %in% include_vars | names(wvs) %in% c("S002", "S003", "X048WVS"))] #year, country, region
+wvs <- wvs[,c(which(names(wvs) %in% c("S002", "S003", "X048WVS")), which(!(names(wvs) %in% c("S002", "S003", "X048WVS"))))] # put year country region in front
+colnames(wvs)[which(names(wvs) == "S002")] <- "wave"
+colnames(wvs)[which(names(wvs) == "S003")] <- "pop"
+colnames(wvs)[which(names(wvs) == "X048WVS")] <- "region"
+col_idx <- c(which(names(wvs)=="pop"), which(names(wvs)=="region"), which(names(wvs)=="wave")) # To move these variables to the front
+N.extravars <- length(col_idx)
+##wvs <- wvs[, c(col_idx, (1:ncol(wvs))[-col_idx]) ]
+wvs <- wvs[,c( col_idx, setdiff(1:length(names(wvs)),col_idx) ) ]
 
-loci <- ls(wvs.rep_subset)
-loci <- loci[loci != "X048WVS"]
-loci <- loci[loci != "pop"]
-loci <- loci[loci != "Region"]
-loci <- loci[loci != "S002"]
-loci <- loci[loci != "S003"]
-# what is the type of data, discrete (0) or continuous (1)
-type <- c(0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	1, 	1, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0, 	0 )
-names(type) <- loci # make sure to give names to elements of this vector
+wvs <- wvs[str_detect(wvs$wave,"^2005") | str_detect(wvs$wave,"^2010"),] # use just these WVS waves
+wvs[,(N.extravars+1):dim(wvs)[2]] <- wvs[,match(include_vars, names(wvs))] # re-order everything except for year, country, region so that it matches the order of variables in "include_vars", which is also the order in "recode_wvs.do" 
+wvs.variablenames <- paste0("v",c( 1:7,10:64,75:143,160:219)) # assigning variable names according to Stata script "recode_wvs.do" 
+names(wvs)[(N.extravars+1):dim(wvs)[2]] <- wvs.variablenames
+wvs.nominalvars <- c("v11","v33","v34","v35","v81","v82","v101","v103","v117","v118","v119","v120","v121","v122",
+  "v174","v175","v176","v177","v178","v180","v181","v215","v216","v217","v218","v219")
+# Note: v10 can be treated as binary because nobody responded with "neither", which we would have considered nominal
+wvs <- wvs[,-which(names(wvs) %in% wvs.nominalvars)] # remove nominal variables
 
-# ---  ---- --- --- -- 
-# from (CultureFst.r)
-pops = as.character(unique(wvs.rep_subset[,1]))
-var.loci = function( d, l ){
-  # d is the data matrix
-  # l is the name of the trait	
-  print(paste0("locus = ", l))
-  
-  # condition on whether it is a discrete or quantitative character
-  if( type[[l]]==1 ){ # quantitative character
-    print( paste( "q trait", l ) )
-    # find total variance
-    var.locus = sapply( 1:length(pops), function(y){ yo = pops[y]; var(  d[ d[,1]==yo, l], na.rm=T ) } ) 
+# ===== Recoding of factors (necessary for normalization of variables) =====
+# Get rid of factor level 10 "neither" since it is not used (and since it prevents us from using the variable as a binary)
+levels(wvs$v10)[7:8] <- levels(wvs$v10)[7]
+# v75: rearrange order of responses from "agree, disagree, neither" so that "neither" is in the middle.
+levels(wvs$v75)[7:8] <- c(levels(wvs$v75)[8], levels(wvs$v75)[7])
+v75_resp7 <-  which(wvs$v75==levels(wvs$v75)[7])
+v75_resp8 <-  which(wvs$v75==levels(wvs$v75)[8])
+wvs$v75[v75_resp7] <- levels(wvs$v75)[8]  
+wvs$v75[v75_resp8] <- levels(wvs$v75)[7]
+# v76: rearrange order of responses from "agree, disagree, neither" so that "neither" is in the middle.
+levels(wvs$v76)[7:8] <- c(levels(wvs$v76)[8], levels(wvs$v76)[7])
+v76_resp7 <-  which(wvs$v76==levels(wvs$v76)[7])
+v76_resp8 <-  which(wvs$v76==levels(wvs$v76)[8])
+wvs$v76[v76_resp7] <- levels(wvs$v76)[8]  
+wvs$v76[v76_resp8] <- levels(wvs$v76)[7]
+# v102: rearrange order of responses from "follow instrucitons, must be convinced, depends" so that "depends" in in the middle
+levels(wvs$v102)[7:8] <- c(levels(wvs$v102)[8], levels(wvs$v102)[7])
+v102_resp7 <-  which(wvs$v102==levels(wvs$v102)[7])
+v102_resp8 <-  which(wvs$v102==levels(wvs$v102)[8])
+wvs$v102[v102_resp7] <- levels(wvs$v102)[8]  
+wvs$v102[v102_resp8] <- levels(wvs$v102)[7]
+# v109: rearrange order of responses from "disapprove, approve, depends" so that "depends" in in the middle
+levels(wvs$v109)[7:8] <- c(levels(wvs$v109)[8], levels(wvs$v109)[7])
+v109_resp7 <-  which(wvs$v109==levels(wvs$v109)[7])
+v109_resp8 <-  which(wvs$v109==levels(wvs$v109)[8])
+wvs$v109[v109_resp7] <- levels(wvs$v109)[8]  
+wvs$v109[v109_resp8] <- levels(wvs$v109)[7]
+# v129: rearrange order of responses from "will help, will harm, some of each" so that "some of each" in the middle
+levels(wvs$v129)[7:8] <- c(levels(wvs$v129)[8], levels(wvs$v129)[7])
+v129_resp7 <-  which(wvs$v129==levels(wvs$v129)[7])
+v129_resp8 <-  which(wvs$v129==levels(wvs$v129)[8])
+wvs$v129[v129_resp7] <- levels(wvs$v129)[8]  
+wvs$v129[v129_resp8] <- levels(wvs$v129)[7]
+# v182, need to collapse "Only on special holy days/Christmas/Easter days" and "Other specific holy days" together
+levels(wvs$v182) <- levels(wvs$v182)[c(1:8,10,10,11:13)] #merge the two responses
 
-  }else{ # discrete character
-    # count the unique variants   
-    polymorphs = as.character( unique(d[,l]) ); 
-    polymorphs = polymorphs[is.na(polymorphs)==FALSE]
-    
-    # find the frequency of any variant per trait per population
-    freq.within = lapply( pops, function(z) { 
-      data = d[ d[,1]==z, ]
-      freq = rep(0, length(polymorphs) )
-      for( i in 1:length(polymorphs) ){
-        freq[i] = sum( data[,l]==polymorphs[i], na.rm=T ) / 	sum( is.na(data[,l])==FALSE )
-        }
-      freq
-      } )
-    names(freq.within) = pops      
-    
-    if (length(polymorphs)>0){ 
-    var.each.k <- matrix(NA, length(pops), length(polymorphs))
-      for( k in 1:length(polymorphs)){
-        var.each.k[,k] <- sapply(1:length(pops), function(y){ freq.within[[pops[y]]][k] * (1 - freq.within[[pops[y]]][k]) })
-      }
-      var.locus <- rowSums(var.each.k) # variance at the current locus
-    }else{ # if there is no information about answer frequencies, then fill array with NA 
-      var.locus <- matrix(NA, length(pops), 1)    
-    }  
-    var.locus
-  } 
-  var.locus
+# ===== Min-max normalization =====
+for (i in (N.extravars+1):dim(wvs)[2] ){  
+  wvs[,i] <- as.integer(wvs[,i]) # first convert variable from factor to integer
+  wvs.norm <- wvs[,i]
+  wvs.norm[which(wvs.norm<6)] <- NA # all negative-valued responses get turned into NA
+  wvs[,i] <- (wvs.norm - min(wvs.norm, na.rm=T))/ (max(wvs.norm, na.rm=T) - min(wvs.norm, na.rm=T)) # perform min-max normalisation
 }
+wvs.colsums <- colSums(wvs[,(N.extravars+1):dim(wvs)[2]], na.rm=T) # remove variables that were all NA, i.e., negative values in the original WVS 
+wvs <- wvs[, -as.vector(which(wvs.colsums==0)+3)] # adding 3 because index is from 4: above, to exclude pop, location, region 
+pops <- unique(wvs$pop)
 
-# across all traits
-var.all.loci = sapply( loci, function(z){ var.loci(wvs.rep_subset, z) } )
-var.societies <-  rowMeans(var.all.loci, na.rm=T)
-var.societies <- data.frame(pops, "CountryISO"= rep(NA, length(var.societies)) , var.societies) 
+# Get modified ('non-allelised')  Muthukrishna cultural variance
+cultvar.matrix <- matrix(NA, length(pops), dim(wvs)[2]-N.extravars) #rows are populations, columns are WVS questions
+for (col in 1:dim(cultvar.matrix)[2]){
+  print(col)
+  cultvar.matrix[,col] <-  sapply(1:length(pops), function(y){ var(wvs[which(wvs$pop==pops[y]), col+N.extravars ], na.rm=T)})
+  }
+cultvar.means <- rowMeans(cultvar.matrix, na.rm=T)
+var.societies <- data.frame(pops, "CountryISO"= rep(NA, length(cultvar.means)) , cultvar.means) 
 var.societies <- var.societies[order(var.societies$pops),]
-
 # attaching the ISO codes only to countries for which we have heritability data 
-var.societies$CountryISO[c( 5,12,14,21,22,26,30,34,35,47,50,58,64,66,74)] <-  
-  c("AU","CA","CN","FI","FR","GB","IN","IT","JP","NL","NO","RU","KR","SE","US")
+var.societies$CountryISO[c( 5,11,13,20,21,29,33,34,37,47,50,57,64,65,73,74)] <-  
+  c("AU","CA","CN","FI","FR","IN","IT","JP","KR","NL","NO","RU","ES","SE","GB","US")
 var.societies$CountryISO <- as.factor(var.societies$CountryISO)
 var.societies.reduced <- var.societies[var.societies$CountryISO %in% country,] # only inlcude countries for which we have heritability data
 
@@ -155,7 +170,7 @@ var.societies.reduced <- var.societies[var.societies$CountryISO %in% country,] #
 dat <- merge(uz[uz$CountryISO %in% country,], dat.pre, by.x="CountryISO", by.y="country", all.y = T)
 dat <- data.frame(dat[,1:2], matrix(NA,dim(dat)[1],2), dat$CTL_DS, rep(NA,dim(dat)[1]), dat$CTL_DG, rep(NA,dim(dat)[1]), dat$CTL_C, rep(NA,dim(dat)[1]), dat[,-c(1:5)])
 colnames(dat)[3:10] <- c("var_muth","var_muth.ascribed","var_uzDS","var_uzDS.ascribed","var_uzDG","var_uzDG.ascribed","var_uzC","var_uzC.ascribed")
-dat$var_muth <- var.societies.reduced$var.societies[match(dat$CountryISO, var.societies.reduced$CountryISO)]
+dat$var_muth <- var.societies.reduced$cultvar.means[match(dat$CountryISO, var.societies.reduced$CountryISO)]
 
 # organising the data
 dat$var_uzDS[which(dat$var_uzDS=="n/a")] <- NA # Convert Uz "n/a"s into proper NAs
@@ -175,8 +190,8 @@ dat$var_uzDG.ascribed <- dat$var_uzDG
 dat$var_uzC.ascribed <- dat$var_uzC
 
 # Manually entering countries to use for ascription of Muthukrishna cultrual variance 
-dat$var_muth.ascribed[which(dat$Country=="Belgium")] <- mean(var.societies$var.societies[which(var.societies$pops %in% c("France","Germany","Netherlands"))])
-dat$var_muth.ascribed[which(dat$Country=="Denmark")] <- mean(var.societies$var.societies[which(var.societies$pops %in% c("Sweden","Germany"))])
+dat$var_muth.ascribed[which(dat$Country=="Belgium")] <- mean(var.societies$cultvar.means[which(var.societies$pops %in% c("France","Germany","Netherlands"))])
+dat$var_muth.ascribed[which(dat$Country=="Denmark")] <- mean(var.societies$cultvar.means[which(var.societies$pops %in% c("Sweden","Germany"))])
 # --> Skipping ascription for Czech Republic because heritability from there isn't included in our list of culturally sensitive traits
 
 # Manually entering countries to use for ascription of Uz cultrual variance 
@@ -263,12 +278,24 @@ culturaltraits_nonpsychiatric <-  which(dat.long$trait_string %in% c(
   "attention_functions", "basic_interpersonal_interactions","calculation_functions","complex_interpersonal_interactions","education","global_psychosocial_functions","higher-level_cognitive_functions","individual_attitudes_of_strangers","informal_social_relationships","intellectual_functions",
   "looking_after_ones_health","memory_functions","mild_mental_retardation","potential_health_hazards_related_to_socioeconomic_and_psychosocial_circumstances","problems_related_to_upbringing","psychomotor_functions","religion_and_spirituality","societal_attitudes")
   )
+# Standardize the variables
+dat.long$var_muth <- scale(dat.long$var_muth)
+dat.long$var_muth.ascribed <- scale(dat.long$var_muth.ascribed)
+dat.long$var_uzDS <- scale(dat.long$var_uzDS)
+dat.long$var_uzDG <- scale(dat.long$var_uzDG)
+dat.long$var_uzC <- scale(dat.long$var_uzC)
+dat.long$e_migdppc <- scale(dat.long$e_migdppc) 
+dat.long$e_peaveduc <- scale(dat.long$e_peaveduc) 
+dat.long$e_wb_pop <- scale(dat.long$e_wb_pop)
 # Adding to the above list all traits within Psychiatric domain except for 'sleep functions'
 culturaltraits_withpsychiatric <- union(culturaltraits_nonpsychiatric, setdiff(which(dat.long$trait_domain=="Psychiatric"), which(dat.long$trait_subchapter=="Sleep Functions")))
 dat.core <- dat.long[culturaltraits_nonpsychiatric,]
 dat.expanded <- dat.long[culturaltraits_withpsychiatric,]
 
 #------
+write.csv(dat.core, "heritability-dat-core.csv")
+write.csv(dat.expanded, "heritability-dat-expanded.csv")
+
 cor.test(dat.core$var_muth, dat.core$heritability)
 cor.test(dat.expanded$var_muth, dat.expanded$heritability)
 cor.test(dat.core$var_muth.ascribed, dat.core$heritability)
@@ -282,10 +309,12 @@ qplot(var_uzDS, heritability, geom = c("abline"), data=dat.core)
 
 plot1 <- ggplot(data = dat.core, aes(x = var_muth, heritability))
 plot2 <- ggplot(data = dat.expanded, aes(x = var_muth, heritability))
-plot3 <- ggplot(data = dat.core, aes(x = var_uzDG, heritability))
-plot4 <- ggplot(data = dat.expanded, aes(x = var_uzDG, heritability))
-plot5 <- ggplot(data = dat.core, aes(x = var_uzDS, heritability))
-plot6 <- ggplot(data = dat.expanded, aes(x = var_uzDS, heritability))
+plot3 <- ggplot(data = dat.core, aes(x = var_muth.ascribed, heritability))
+plot4 <- ggplot(data = dat.expanded, aes(x = var_muth.ascribed, heritability))
+plot5 <- ggplot(data = dat.core, aes(x = var_uzDG, heritability))
+plot6 <- ggplot(data = dat.expanded, aes(x = var_uzDG, heritability))
+plot7 <- ggplot(data = dat.core, aes(x = var_uzDS, heritability))
+plot8 <- ggplot(data = dat.expanded, aes(x = var_uzDS, heritability))
 
 plot1 + geom_point() +  geom_smooth(method='lm')
 plot2 + geom_point() +  geom_smooth(method='lm')
@@ -293,51 +322,53 @@ plot3 + geom_point() +  geom_smooth(method='lm')
 plot4 + geom_point() +  geom_smooth(method='lm')
 plot5 + geom_point() +  geom_smooth(method='lm')
 plot6 + geom_point() +  geom_smooth(method='lm')
+plot7 + geom_point() +  geom_smooth(method='lm')
+plot8 + geom_point() +  geom_smooth(method='lm')
 
 
-model.1 <- lmer(heritability ~ var_muth+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.2 <- lmer(heritability ~ var_muth+ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.3 <- lmer(heritability ~ var_muth+ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.4 <- lmer(heritability ~ var_muth+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.5 <- lmer(heritability ~ var_muth+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.6 <- lmer(heritability ~ var_muth+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
-model.7 <- lmer(heritability ~ var_muth+ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
-model.8 <- lmer(heritability ~ var_muth+ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
-model.9 <- lmer(heritability ~ var_muth+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
-model.10 <- lmer(heritability ~ var_muth+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.01 <- lmer(heritability ~ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.02 <- lmer(heritability ~ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.03 <- lmer(heritability ~ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.04 <- lmer(heritability ~ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.05 <- lmer(heritability ~ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.06 <- lmer(heritability ~ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.07 <- lmer(heritability ~ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.08 <- lmer(heritability ~ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.09 <- lmer(heritability ~ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.10 <- lmer(heritability ~ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
 
-model.11 <- lmer(heritability ~ var_muth+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.12 <- lmer(heritability ~ var_muth+ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.13 <- lmer(heritability ~ var_muth+ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.14 <- lmer(heritability ~ var_muth+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.15 <- lmer(heritability ~ var_muth+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.16 <- lmer(heritability ~ var_muth+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
-model.17 <- lmer(heritability ~ var_muth+ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
-model.18 <- lmer(heritability ~ var_muth+ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
-model.19 <- lmer(heritability ~ var_muth+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
-model.20 <- lmer(heritability ~ var_muth+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.11 <- lmer(heritability ~ var_muth+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.12 <- lmer(heritability ~ var_muth+ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.13 <- lmer(heritability ~ var_muth+ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.14 <- lmer(heritability ~ var_muth+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.15 <- lmer(heritability ~ var_muth+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.16 <- lmer(heritability ~ var_muth+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.17 <- lmer(heritability ~ var_muth+ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.18 <- lmer(heritability ~ var_muth+ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.19 <- lmer(heritability ~ var_muth+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.20 <- lmer(heritability ~ var_muth+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
 
-model.21 <- lmer(heritability ~ var_uzDG+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.22 <- lmer(heritability ~ var_uzDG+ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.23 <- lmer(heritability ~ var_uzDG+ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.24 <- lmer(heritability ~ var_uzDG+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.25 <- lmer(heritability ~ var_uzDG+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.26 <- lmer(heritability ~ var_uzDG+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
-model.27 <- lmer(heritability ~ var_uzDG+ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
-model.28 <- lmer(heritability ~ var_uzDG+ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
-model.29 <- lmer(heritability ~ var_uzDG+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
-model.30 <- lmer(heritability ~ var_uzDG+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.21 <- lmer(heritability ~ var_muth.ascribed+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.22 <- lmer(heritability ~ var_muth.ascribed+ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.23 <- lmer(heritability ~ var_muth.ascribed+ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.24 <- lmer(heritability ~ var_muth.ascribed+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.25 <- lmer(heritability ~ var_muth.ascribed+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.26 <- lmer(heritability ~ var_muth.ascribed+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.27 <- lmer(heritability ~ var_muth.ascribed+ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.28 <- lmer(heritability ~ var_muth.ascribed+ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.29 <- lmer(heritability ~ var_muth.ascribed+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.30 <- lmer(heritability ~ var_muth.ascribed+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
 
-model.31 <- lmer(heritability ~ var_uzDG+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.32 <- lmer(heritability ~ var_uzDG+ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.33 <- lmer(heritability ~ var_uzDG+ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.34 <- lmer(heritability ~ var_uzDG+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.35 <- lmer(heritability ~ var_uzDG+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.36 <- lmer(heritability ~ var_uzDG+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
-model.37 <- lmer(heritability ~ var_uzDG+ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
-model.38 <- lmer(heritability ~ var_uzDG+ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
-model.39 <- lmer(heritability ~ var_uzDG+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
-model.40 <- lmer(heritability ~ var_uzDG+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.31 <- lmer(heritability ~ var_uzDG+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.32 <- lmer(heritability ~ var_uzDG+ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.33 <- lmer(heritability ~ var_uzDG+ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.34 <- lmer(heritability ~ var_uzDG+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.35 <- lmer(heritability ~ var_uzDG+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
+model.36 <- lmer(heritability ~ var_uzDG+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.37 <- lmer(heritability ~ var_uzDG+ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.38 <- lmer(heritability ~ var_uzDG+ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.39 <- lmer(heritability ~ var_uzDG+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.40 <- lmer(heritability ~ var_uzDG+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
 
 model.41 <- lmer(heritability ~ var_uzDS+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
 model.42 <- lmer(heritability ~ var_uzDS+ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
@@ -350,41 +381,329 @@ model.48 <- lmer(heritability ~ var_uzDS+ e_peaveduc+ (1|h2_type)+ (1|trait_doma
 model.49 <- lmer(heritability ~ var_uzDS+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
 model.50 <- lmer(heritability ~ var_uzDS+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
 
-model.51 <- lmer(heritability ~ var_uzDS+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.52 <- lmer(heritability ~ var_uzDS+ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.53 <- lmer(heritability ~ var_uzDS+ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.54 <- lmer(heritability ~ var_uzDS+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.55 <- lmer(heritability ~ var_uzDS+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
-model.56 <- lmer(heritability ~ var_uzDS+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
-model.57 <- lmer(heritability ~ var_uzDS+ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
-model.58 <- lmer(heritability ~ var_uzDS+ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
-model.59 <- lmer(heritability ~ var_uzDS+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
-model.60 <- lmer(heritability ~ var_uzDS+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.51 <- lmer(heritability ~ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.52 <- lmer(heritability ~ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.53 <- lmer(heritability ~ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.54 <- lmer(heritability ~ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.55 <- lmer(heritability ~ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.56 <- lmer(heritability ~ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.57 <- lmer(heritability ~ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.58 <- lmer(heritability ~ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.59 <- lmer(heritability ~ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.60 <- lmer(heritability ~ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
 
-model.61 <- lmer(heritability ~ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.62 <- lmer(heritability ~ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.63 <- lmer(heritability ~ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.64 <- lmer(heritability ~ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.65 <- lmer(heritability ~ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.core)
-model.66 <- lmer(heritability ~ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
-model.67 <- lmer(heritability ~ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
-model.68 <- lmer(heritability ~ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
-model.69 <- lmer(heritability ~ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
-model.70 <- lmer(heritability ~ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.core)
+model.61 <- lmer(heritability ~ var_muth+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.62 <- lmer(heritability ~ var_muth+ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.63 <- lmer(heritability ~ var_muth+ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.64 <- lmer(heritability ~ var_muth+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.65 <- lmer(heritability ~ var_muth+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.66 <- lmer(heritability ~ var_muth+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.67 <- lmer(heritability ~ var_muth+ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.68 <- lmer(heritability ~ var_muth+ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.69 <- lmer(heritability ~ var_muth+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.70 <- lmer(heritability ~ var_muth+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+
+model.71 <- lmer(heritability ~ var_muth.ascribed+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.72 <- lmer(heritability ~ var_muth.ascribed+ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.73 <- lmer(heritability ~ var_muth.ascribed+ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.74 <- lmer(heritability ~ var_muth.ascribed+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.75 <- lmer(heritability ~ var_muth.ascribed+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.76 <- lmer(heritability ~ var_muth.ascribed+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.77 <- lmer(heritability ~ var_muth.ascribed+ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.78 <- lmer(heritability ~ var_muth.ascribed+ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.79 <- lmer(heritability ~ var_muth.ascribed+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.80 <- lmer(heritability ~ var_muth.ascribed+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+
+model.81 <- lmer(heritability ~ var_uzDG+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.82 <- lmer(heritability ~ var_uzDG+ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.83 <- lmer(heritability ~ var_uzDG+ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.84 <- lmer(heritability ~ var_uzDG+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.85 <- lmer(heritability ~ var_uzDG+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.86 <- lmer(heritability ~ var_uzDG+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.87 <- lmer(heritability ~ var_uzDG+ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.88 <- lmer(heritability ~ var_uzDG+ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.89 <- lmer(heritability ~ var_uzDG+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.90 <- lmer(heritability ~ var_uzDG+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+
+model.91 <- lmer(heritability ~ var_uzDS+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.92 <- lmer(heritability ~ var_uzDS+ e_migdppc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.93 <- lmer(heritability ~ var_uzDS+ e_peaveduc+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.94 <- lmer(heritability ~ var_uzDS+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.95 <- lmer(heritability ~ var_uzDS+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_subchapter)+ (1|country), data=dat.expanded)
+model.96 <- lmer(heritability ~ var_uzDS+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.97 <- lmer(heritability ~ var_uzDS+ e_migdppc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.98 <- lmer(heritability ~ var_uzDS+ e_peaveduc+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.99 <- lmer(heritability ~ var_uzDS+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+model.100 <- lmer(heritability ~ var_uzDS+ e_migdppc+ e_peaveduc+ e_wb_pop+ (1|h2_type)+ (1|trait_domain)+ (1|country), data=dat.expanded)
+
+#-----------
+
+models <- paste0("model.", 1:100)
+var.types <- c("Muth index", "Muth index (ascr.)", "Uz DG index", "Uz DS index") 
+rsquared.list <- matrix(NA,100,3)
+
+for (i in seq(1,91,by=10)){
+  datascope <- ifelse(i<51, "Core",  "Expanded")
+  vartype.id <- (((i+9)/10)-1) %% 5 
+  if (i %in% c(1,51)){ tablerows <- c("GDP per cap.", "education", "population")
+    }else{ tablerows <- c(var.types[vartype.id], "GDP per cap.", "education", "population") }
+  for (j in seq(0,9)){rsquared.list[i+j,1:2] <-  round(r.squaredGLMM(get(model.list[i+j])), 4)} # get R-squared
+  if (i %in% 11:41){ rsquared.list[i:(i+9),3] <- round(rsquared.list[i:(i+9),1] - rsquared.list[1:10,1],4) } # get r-squared gains compared to models without cultural variance
+  if (i %in% 61:91){ rsquared.list[i:(i+9),3] <- round(rsquared.list[i:(i+9),1] - rsquared.list[51:60,1],4)}
+  
+  stargazer(get(models[i]),get(models[i+1]),get(models[i+2]),get(models[i+3]),get(models[i+4]),
+            get(models[i+5]),get(models[i+6]),get(models[i+7]),get(models[i+8]),get(models[i+9]),
+            column.labels = c(paste0(datascope," traits at Subchapter-level"), paste0(datascope," traits at Domain-level")), 
+            column.separate = c(5, 5), title= paste0("Models ",i," to ", i+9, ": ", datascope, " trait list, ", var.types[vartype.id]), 
+            covariate.labels = tablerows, ci = FALSE, align=TRUE,
+            add.lines = list(c("R2 marginal", rsquared.list[i:(i+9),1] ),
+                             c("R2 conditional", rsquared.list[i:(i+9),2] ),
+                             c("R2 marginal gain", rsquared.list[i:(i+9),3] )),
+            out= paste0("modelresults_",i,"_to_",i+9, ".html" ))
+}
+
+# stack two tables?
+
+#-------
+results.list$m.R2gain <- results.list$m.R2 - rep( results.list$m.R2[c(1:10,51:60)], 4)
+
+summary(model.99)
+
+add.lines = list(c("Model number", seq(i,i+9))),
 
 
-model.list <- paste0("model.", 1:70)
-R2.list <- t(sapply(model.list, function(x)r.squaredGLMM(get(x))))
-R2.list <- data.frame(round(R2.list, 3))
-colnames(R2.list) <- c("marginal.R2","conditional.R2")
-R2.list$ marginal.R2gain <- rep(NA, dim(R2.list)[1])
-R2.list$conditional.R2gain <- rep(NA, dim(R2.list)[1])
-##R2.list$marginal.R2gain <- R2.list$marginal.R2
+for (j in vec){class(get(model.list[99])) <- "lmerMod"}
 
-# R2.list$conditional.R2[1] - R2.list$conditional.R2[61]
-# R2.list$conditional.R2[1] / R2.list$conditional.R2[61]
-# R2.list$conditional.R2[5] - R2.list$conditional.R2[65]
-# R2.list$conditional.R2[5] / R2.list$conditional.R2[65]
+
+
+class(get(model.list[99])) <- "lmerMod"
+
+summary(model.100)$coefs
+
+
+data(cake)
+
+insertrow <- function(existingDF, newrow, r) {
+  existingDF[seq(r+1,nrow(existingDF)+1),] <- existingDF[seq(r,nrow(existingDF)),]
+  existingDF[r,] <- newrow
+  existingDF
+}
+
+summary(M1 <- lmer(angle ~ temp + (1 | replicate) + (1|recipe:replicate), cake, REML= FALSE))
+summary(M2 <- lmer(angle ~ factor(temperature) + (1 | replicate) + (1|recipe:replicate), cake, REML= FALSE))
+
+Tables <- stargazer(M1, M2, style="ajps", title="An Illustrative Model Using Cake Data", dep.var.labels.include = FALSE, 
+                    covariate.labels=c( "Temperature (Continuous)", "Temperature (Factor $<$ 185)", "Temperature (Factor $<$ 195)", "Temperature (Factor $<$ 205)", "Temperature (Factor $<$ 215)", "Temperature (Factor $<$ 225)")
+)
+
+Tables <- as.data.frame(Tables)
+Tables$Tables <- as.character(Tables$Tables)
+Tables
+
+r <- 25
+
+randomeffect <- "{\\bf Random Effect} & & \\\\"
+hline <- "\\hline"
+newline <- "\\\\"
+
+Tables <- insertrow(Tables, hline, r)
+Tables <- insertrow(Tables,randomeffect,r+1)
+Tables <- insertrow(Tables,hline,r+2)
+
+num.recipe.replicate <- sapply(ranef(M1),nrow)[1]
+num.replicate <- sapply(ranef(M1),nrow)[2]
+
+stddev.M1.recipe.replicate <- attributes(VarCorr(M1)$"recipe:replicate")$stddev
+stddev.M1.replicate <- attributes(VarCorr(M1)$replicate)$stddev
+stddev.M2.recipe.replicate <- attributes(VarCorr(M2)$"recipe:replicate")$stddev
+stddev.M2.replicate <- attributes(VarCorr(M2)$replicate)$stddev
+
+number.of.recipe.replicate <- paste("\\# of Recipe:Replicate & ", num.recipe.replicate, "&", num.recipe.replicate, "\\\\")
+stddev.recipe.replicate <- paste("Recipe:Replicate Standard Deviation & ", round(stddev.M1.recipe.replicate, 3), "&", round(stddev.M2.recipe.replicate, 3), "\\\\")
+number.of.replicate <-paste("\\# of Replicate & ", num.replicate, "&", num.replicate, "\\\\")
+stddev.replicate <- paste("Replicate Standard Deviation & ", round(stddev.M1.replicate, 3), "&", round(stddev.M2.replicate, 3), "\\\\")
+
+Tables <- insertrow(Tables,number.of.recipe.replicate,r+3)
+Tables <- insertrow(Tables,stddev.recipe.replicate,r+4)
+Tables <- insertrow(Tables,newline,r+5)
+Tables <- insertrow(Tables,number.of.replicate,r+6)
+Tables <- insertrow(Tables,stddev.replicate,r+7)
+
+write.table(Tables,file="tables.tex",sep="",row.names= FALSE,na="", quote = FALSE, col.names = FALSE)
+
+
+
+#--------
+
+
+
+stargazer(model.51, out="heri_test.tex")
+
+class(model.51)<- "lmerMod"
+
+
+model.list <- paste0("model.", 1:100)
+results.list <- data.frame(matrix(NA, 100, 8))
+colnames(results.list) <- c("beta","SE","df","t","p","m.R2","c.R2","m.R2gain")
+for (i in 1:100){
+  print(i)
+  results.list[i,1] <- i  
+  if (i %in% c(11:50,61:100)  ){
+    results.list[i,1:5] <- round(summary(get(model.list[i]))$coefficients[2,], 4) 
+  } else {
+    results.list[i,1:5] <- rep(NA,5)
+  }
+  results.list[i,6:7] <- round(r.squaredGLMM(get(model.list[i])), 4)
+}
+results.list$m.R2gain <- results.list$m.R2 - rep( results.list$m.R2[c(1:10,51:60)], 4)
+
+full.list <- data.frame(matrix(NA,dim(results.list)[1],7) , results.list)
+colnames(full.list)[1:7] <- c("model","trait.breadth","cult.var","trait.level","gdp.pc","education","population")
+full.list$model <- 1:100
+full.list$trait.breadth <- c(rep("core",50),rep("expanded",50))
+full.list$cult.var <- rep(c(rep("none",10),rep("muth",10),rep("muth.ascr",10),rep("uz.DG",10),rep("uz.DS",10)),2)
+full.list$trait.level <- rep(c(rep("subchap",5),rep("domain",5)),10)
+full.list$gdp.pc <- rep(c(0,1,0,0,1),20)
+full.list$education <- rep(c(0,0,1,0,1),20)
+full.list$population <- rep(c(0,0,0,1,1),20)
+
+formattable(full.list)
+
+formattable(full.list, list(trait.breadth = color_tile("white", "pink")))
+
+formattable(full.list, align =c(rep("c",15)), list(
+  `beta`= color_tile("white", "green"),
+  `SE`= color_tile("white", "green"),
+  `df`= color_tile("white", "green"),
+  `t`= color_tile("white", "green"),
+  `p`= color_tile("white", "green"),
+  `m.R2`= color_tile("white", "orange"),
+  `c.R2`= color_tile("white", "orange"),
+  `m.R2gain`= color_tile("white", "orange"),
+  `gdp.pc`= color_tile("white", "darkmagenta"),
+  `education`= color_tile("white", "darkmagenta"),
+  `population`= color_tile("white", "darkmagenta")
+))
+
+
+
+summary(model.17)
+
+
+#-------------
+
+
+
+
+
+
+
+stargazer(model.33, out="heri_test.htm")
+
+summary(model.34)$coef[1:12]
+
+
+
+
+anova(model.39, model.99)
+
+summary(model.11)
+
+
+library(xtable)
+# Get the table first.
+summary(M1 <- lme4::lmer(angle ~ temp + (1 | replicate) + (1|recipe:replicate), cake, REML= FALSE))
+summary(M2 <- lme4::lmer(angle ~ factor(temperature) + (1 | replicate) + (1|recipe:replicate), cake, REML= FALSE))
+
+stargazer(M1, M2, style="ajps", title="An Illustrative Model Using Cake Data", dep.var.labels.include = FALSE, 
+          covariate.labels=c( "Temperature (Continuous)", "Temperature (Factor $<$ 185)", "Temperature (Factor $<$ 195)", "Temperature (Factor $<$ 205)", "Temperature (Factor $<$ 215)", "Temperature (Factor $<$ 225)")
+)
+
+
+
+# now for lmerTest
+summary(M1a <- lmer(angle ~ temp + (1 | replicate) + (1|recipe:replicate), cake, REML= FALSE))
+summary(M2a <- lmer(angle ~ factor(temperature) + (1 | replicate) + (1|recipe:replicate), cake, REML= FALSE))
+anovadf <- data.frame(anova(M1a,M2a))
+xtable(anovadf)
+print(anovadf, type = "html")
+
+
+
+
+
+
+#-----------
+model.list <- paste0("model.", 1:90)
+results.list <- data.frame(matrix(NA, 90, 9))
+colnames(results.list) <- c( "model", "cultvar.estimate","cultvar.SE","cultvar.df","cultvar.t-value","cultvar.p-value","marginal.R2","conditional.R2","marginal.R2gain")
+for (i in 1:90){
+  results.list[i,1] <- model.list[i]  
+  if (i<81){
+  results.list[i,2:6] <- round(summary(get(model.list[i]))$coefficients[2,], 4) 
+  } else {
+    results.list[i,2:6] <- rep(NA,5)
+  }
+    results.list[i,7:8] <- round(r.squaredGLMM(get(model.list[i])), 4)
+}
+results.list$marginal.R2gain <- results.list$marginal.R2 - rep( results.list$marginal.R2[81:90], 9)
+
+
+results.list <- t(sapply(model.list, function(x)r.squaredGLMM(get(x))))
+results.list <- data.frame(round(results.list, 3))
+colnames(results.list) <- c("marginal.R2","conditional.R2")
+results.list$marginal.R2gain <- rep(NA, dim(results.list)[1])
+results.list$marginal.R2gain <- results.list$marginal.R2 - rep( results.list$marginal.R2[81:90], 9)
+
+results.list
+
+
+
+# var muth - expanded
+# model 23 * (control variables: education) ; beta -7.0 !?
+# model 24 . (control variables: population) ; -4.8
+
+# var muth ascribed - expanded
+# model 32 . ; -3.9
+# model 33 * ; -7.3
+# model 34 . ; -4.9
+# model 35 . ; -6.3
+
+# var muth not significant in any of the "domain"-level phenotype models
+# var uz DG (models 40-49) doesn't work with dat.core
+
+# var uz DG - expanded
+# model 51 *
+# model 52 *
+# model 53 *
+# model 54 *
+# model 55 .
+# model 56 *
+# model 57 .
+# model 58 .
+# model 59 .
+
+# var uz DS non-significant in every model
+
+
+
+
+
+
+
+
+
+
+
+
+
+#results.list$conditional.R2gain <- rep(NA, dim(results.list)[1])
+##results.list$marginal.R2gain <- results.list$marginal.R2
+
+# results.list$conditional.R2[1] - results.list$conditional.R2[61]
+# results.list$conditional.R2[1] / results.list$conditional.R2[61]
+# results.list$conditional.R2[5] - results.list$conditional.R2[65]
+# results.list$conditional.R2[5] / results.list$conditional.R2[65]
 # 
 # 
 # 
@@ -460,4 +779,5 @@ R2.list$conditional.R2gain <- rep(NA, dim(R2.list)[1])
 # 
 # 
 # 
+
 
